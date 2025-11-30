@@ -145,7 +145,7 @@ export default function BalanceTutor() {
       </div>
 
       {/* control panel (minimal) */}
-      <div className="absolute right-6 top-6 z-30 w-[420px] max-w-[90vw] rounded-3xl border border-white/10 bg-[#0B1020]/70 p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.7)] backdrop-blur">
+      <div className="absolute right-6 bottom-6 z-30 w-[420px] max-w-[90vw] rounded-3xl border border-white/10 bg-[#0B1020]/70 p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.7)] backdrop-blur">
         <div className="text-sm font-extrabold">Presets</div>
         <div className="mt-3 flex flex-wrap gap-2">{caseButtons}</div>
 

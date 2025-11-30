@@ -6,7 +6,10 @@ import NavPills from "../components/NavPills";
 import type { AvlNode, Student, TutorStep } from "../lib/avl/types";
 import { seedStudents } from "../data/seedStudents";
 import { findNode } from "../lib/avl/find";
-import { insertBST, simulateInsertWithTutorSteps } from "../lib/avl/simulateInsert";
+import {
+  insertBST,
+  simulateInsertWithTutorSteps,
+} from "../lib/avl/simulateInsert";
 
 import { simulateSearchWithTutorSteps } from "../lib/avl/simulateSearch";
 import SearchSheet from "../lib/avl/SearchSheet";
@@ -20,31 +23,32 @@ function buildInitialTree(seed: Student[]) {
 }
 
 export default function InsertTutor() {
-  const [root, setRoot] = useState<AvlNode | null>(() => buildInitialTree(seedStudents));
+  const [root, setRoot] = useState<AvlNode | null>(() =>
+    buildInitialTree(seedStudents)
+  );
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
 
-const startSearch = (id: string) => {
-  const sim = simulateSearchWithTutorSteps(root, id);
-  setSession({
-    steps: sim.steps,
-    idx: 0,
-    finalRoot: root,    
-    mode: "search",
-  } as any);
-  setSearchOpen(false);
-};
- const [session, setSession] = useState<{
-  steps: TutorStep[];
-  idx: number;
-  finalRoot: AvlNode | null;
-  mode: "insert" | "search";
-} | null>(null);
-
+  const startSearch = (id: string) => {
+    const sim = simulateSearchWithTutorSteps(root, id);
+    setSession({
+      steps: sim.steps,
+      idx: 0,
+      finalRoot: root,
+      mode: "search",
+    } as any);
+    setSearchOpen(false);
+  };
+  const [session, setSession] = useState<{
+    steps: TutorStep[];
+    idx: number;
+    finalRoot: AvlNode | null;
+    mode: "insert" | "search";
+  } | null>(null);
 
   const step = session?.steps[session.idx];
-  const renderRoot = session ? (step?.snapshot ?? root) : root;
+  const renderRoot = session ? step?.snapshot ?? root : root;
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -58,17 +62,28 @@ const startSearch = (id: string) => {
 
     if (!id) return showToast("Mã SV không được rỗng");
     if (!name) return showToast("Họ tên không được rỗng");
-    if (Number.isNaN(gpa) || gpa < 0 || gpa > 10) return showToast("Điểm TB phải trong [0..10]");
+    if (Number.isNaN(gpa) || gpa < 0 || gpa > 10)
+      return showToast("Điểm TB phải trong [0..10]");
     if (findNode(root, id)) return showToast("Mã SV đã tồn tại");
 
     const sim = simulateInsertWithTutorSteps(root, { id, name, gpa });
-    setSession({ steps: sim.steps, idx: 0, finalRoot: sim.finalRoot, mode: "insert" });
+    setSession({
+      steps: sim.steps,
+      idx: 0,
+      finalRoot: sim.finalRoot,
+      mode: "insert",
+    });
     setSheetOpen(false);
   };
 
-  const prev = () => session && setSession({ ...session, idx: Math.max(0, session.idx - 1) });
+  const prev = () =>
+    session && setSession({ ...session, idx: Math.max(0, session.idx - 1) });
   const next = () =>
-    session && setSession({ ...session, idx: Math.min(session.steps.length - 1, session.idx + 1) });
+    session &&
+    setSession({
+      ...session,
+      idx: Math.min(session.steps.length - 1, session.idx + 1),
+    });
   const exit = () => setSession(null);
 
   const commit = () => {
@@ -81,10 +96,11 @@ const startSearch = (id: string) => {
     showToast("Đã áp dụng vào cây (BST).");
   };
 
- const atEnd = !!session && session.mode === "insert" && session.idx === session.steps.length - 1;
+  const atEnd =
+    !!session &&
+    session.mode === "insert" &&
+    session.idx === session.steps.length - 1;
 
-
-  
   return (
     <div className="relative h-full w-full overflow-hidden">
       <TreeCanvasLux
@@ -102,8 +118,12 @@ const startSearch = (id: string) => {
           <div className="mb-2">
             <NavPills />
           </div>
-          <div className="text-xs uppercase tracking-widest text-white/60">Insert Tutor</div>
-          <div className="text-lg font-extrabold">BST Insert (no balancing)</div>
+          <div className="text-xs uppercase tracking-widest text-white/60">
+            Insert Tutor
+          </div>
+          <div className="text-lg font-extrabold">
+            BST Insert (no balancing)
+          </div>
           <div className="text-sm text-white/75">
             Ghost chưa nối → so sánh → đi tiếp → gặp null → attach.
           </div>
@@ -120,7 +140,7 @@ const startSearch = (id: string) => {
       <button
         onClick={() => setSheetOpen(true)}
         disabled={!!session}
-        className="absolute cursor-pointer bottom-6 right-6 z-40 rounded-full bg-[#D4AF37] px-6 py-4 text-sm font-extrabold text-black shadow-[0_25px_70px_rgba(0,0,0,0.75)] hover:brightness-110 disabled:opacity-50"
+        className="absolute cursor-pointer bottom-14 right-14 z-40 rounded-full bg-[#D4AF37] px-6 py-4 text-sm font-extrabold text-black shadow-[0_25px_70px_rgba(0,0,0,0.75)] hover:brightness-110 disabled:opacity-50"
       >
         + Add
       </button>
@@ -132,20 +152,20 @@ const startSearch = (id: string) => {
         onSubmit={startTutorial}
       />
       <button
-  onClick={() => setSearchOpen(true)}
-  disabled={!!session}
-  className="absolute cursor-pointer bottom-6 right-[140px] z-40 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-sm font-extrabold text-white shadow-[0_25px_70px_rgba(0,0,0,0.6)] hover:bg-white/10 disabled:opacity-50"
->
-  Search 
-</button>
+        onClick={() => setSearchOpen(true)}
+        disabled={!!session}
+        className="absolute cursor-pointer bottom-14 right-40 z-40 rounded-full border border-white/10 bg-white/5 px-6 py-4 text-sm font-extrabold text-white shadow-[0_25px_70px_rgba(0,0,0,0.6)] hover:bg-white/10 disabled:opacity-50"
+      >
+        
+        Search
+      </button>
 
-<SearchSheet
-  open={searchOpen}
-  disabled={!!session}
-  onClose={() => setSearchOpen(false)}
-  onSubmit={startSearch}
-/>
-
+      <SearchSheet
+        open={searchOpen}
+        disabled={!!session}
+        onClose={() => setSearchOpen(false)}
+        onSubmit={startSearch}
+      />
 
       <StepDock
         active={!!session}

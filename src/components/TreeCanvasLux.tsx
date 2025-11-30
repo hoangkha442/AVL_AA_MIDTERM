@@ -4,32 +4,26 @@ import type { AvlNode, AvlRole, Student, TutorGhostMode } from "../lib/avl/types
 
 type Props = {
   root: AvlNode | null;
-
-  // highlight nodes (insert / balance when needed)
   focusIds?: string[];
-
-  // highlight edges theo path (format: "parent->child")
-  // (search: chỉ tô edges, không tô nodes => focusIds = [])
   focusEdges?: string[];
 
-  // insert ghost
   ghost?: Student;
   ghostMode?: TutorGhostMode;
   ghostTargetId?: string;
   ghostDirHint?: "L" | "R";
 
-  autoFit?: boolean; // fit tree vào frame 90vw/90vh
-
-  // balance roles: { nodeId: "Z"|"Y"|"X" }
+  autoFit?: boolean;
   roles?: Record<string, AvlRole>;
 };
 
-// layout constants (đã nén để cây gọn)
+// layout constants
 const NODE_W = 140;
 const NODE_H = 70;
-const X_GAP = 26;
+const X_GAP = 0;
 const Y_GAP = 82;
 const PAD = 36;
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 function h(n: AvlNode | null) {
   return n ? n.height : 0;
@@ -59,7 +53,6 @@ function layoutTree(root: AvlNode | null) {
     inorder(n.left, d + 1);
 
     depth.set(n.id, d);
-
     const cx = PAD + idx * (NODE_W + X_GAP);
     const top = PAD + d * Y_GAP;
 
@@ -90,11 +83,8 @@ function layoutTree(root: AvlNode | null) {
 
   const maxDepth = nodes.reduce((m, p) => Math.max(m, depth.get(p.id) ?? 0), 0);
 
-  const width =
-    nodes.length === 0 ? 560 : PAD * 2 + nodes.length * (NODE_W + X_GAP) - X_GAP;
-
-  const height =
-    nodes.length === 0 ? 560 : PAD * 2 + (maxDepth + 1) * Y_GAP + 40;
+  const width = nodes.length === 0 ? 560 : PAD * 2 + nodes.length * (NODE_W + X_GAP) - X_GAP;
+  const height = nodes.length === 0 ? 560 : PAD * 2 + (maxDepth + 1) * Y_GAP + 40;
 
   const map = new Map<string, { x: number; y: number }>();
   nodes.forEach((n) => map.set(n.id, { x: n.x, y: n.y }));
@@ -142,9 +132,25 @@ export default function TreeCanvasLux({
   const focus = useMemo(() => new Set(focusIds), [focusIds]);
   const edgeFocus = useMemo(() => new Set(focusEdges), [focusEdges]);
 
-  // measure the frame size for auto-fit scale
+  // frame measure (auto-fit)
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [frame, setFrame] = useState({ w: 0, h: 0 });
+
+  // Zoom
+  const [userScale, setUserScale] = useState(1);
+
+  // Pan (Figma-like)
+  const [pan, setPan] = useState({ x: 0, y: 0 }); // screen px
+  const panState = useRef<{ down: boolean; sx: number; sy: number; px: number; py: number }>({
+    down: false,
+    sx: 0,
+    sy: 0,
+    px: 0,
+    py: 0,
+  });
+
+  const spaceDown = useRef(false);
+  const hovering = useRef(false);
 
   useEffect(() => {
     const el = frameRef.current;
@@ -160,15 +166,105 @@ export default function TreeCanvasLux({
     return () => ro.disconnect();
   }, []);
 
+  // Space mode
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!hovering.current) return;
+      if (e.code === "Space") {
+        // prevent page scroll
+        e.preventDefault();
+        spaceDown.current = true;
+      }
+      if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        setUserScale((s) => clamp(s * 1.12, 0.35, 6));
+      }
+      if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        setUserScale((s) => clamp(s / 1.12, 0.35, 6));
+      }
+      if (e.key === "0") {
+        e.preventDefault();
+        setUserScale(1);
+        setPan({ x: 0, y: 0 });
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") spaceDown.current = false;
+    };
+
+    window.addEventListener("keydown", onKeyDown, { passive: false });
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown as any);
+      window.removeEventListener("keyup", onKeyUp as any);
+    };
+  }, []);
+
   const fitScale = useMemo(() => {
     if (!autoFit) return 1;
     if (frame.w === 0 || frame.h === 0) return 1;
-
     const safePad = 32;
     const sx = (frame.w - safePad) / width;
     const sy = (frame.h - safePad) / height;
     return Math.min(1, sx, sy);
   }, [autoFit, frame.w, frame.h, width, height]);
+
+  const finalScale = useMemo(() => clamp(fitScale * userScale, 0.55, 3.5), [fitScale, userScale]);
+
+  const zoomIn = () => setUserScale((s) => clamp(s * 1.12, 0.35, 6));
+  const zoomOut = () => setUserScale((s) => clamp(s / 1.12, 0.35, 6));
+  const zoomReset = () => setUserScale(1);
+  const panReset = () => setPan({ x: 0, y: 0 });
+
+  // Ctrl/⌘ + wheel => zoom ; normal wheel => pan (figma vibe)
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    // prevent page scroll while hovering in the frame
+    e.preventDefault();
+
+    if (e.ctrlKey || e.metaKey) {
+      const delta = -e.deltaY;
+      const factor = delta > 0 ? 1.08 : 1 / 1.08;
+      setUserScale((s) => clamp(s * factor, 0.35, 6));
+      return;
+    }
+
+    // pan with wheel/trackpad
+    setPan((p) => ({
+      x: p.x - e.deltaX,
+      y: p.y - e.deltaY,
+    }));
+  };
+
+  // Pointer pan: Space + Left drag OR Middle drag
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+
+    // don't start pan when clicking zoom panel/buttons
+    if (target.closest('[data-nopan="1"]')) return;
+
+    const allow = (spaceDown.current && e.button === 0) || e.button === 1; // left+space OR middle
+    if (!allow) return;
+
+    panState.current = { down: true, sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!panState.current.down) return;
+    const dx = e.clientX - panState.current.sx;
+    const dy = e.clientY - panState.current.sy;
+    setPan({ x: panState.current.px + dx, y: panState.current.py + dy });
+  };
+
+  const endPan = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!panState.current.down) return;
+    panState.current.down = false;
+    try {
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+    } catch {}
+  };
 
   // Ghost positioning (insert flow)
   const ghostPos = useMemo(() => {
@@ -182,171 +278,240 @@ export default function TreeCanvasLux({
 
     if (ghostMode === "atNode") return { x: t.x, y: t.y - 86 };
 
-    // atNull: position near the intended child direction
     const dx = (NODE_W + X_GAP) * 0.42 * (ghostDirHint === "L" ? -1 : 1);
     return { x: t.x + dx, y: t.y + Y_GAP };
   }, [ghost, ghostMode, ghostTargetId, ghostDirHint, map, width]);
 
+  // translate inside scaled wrapper so pan feels same speed at all zoom levels
+  const panInStage = useMemo(
+    () => ({ x: pan.x / finalScale, y: pan.y / finalScale }),
+    [pan.x, pan.y, finalScale]
+  );
+
+  const cursor = panState.current.down
+    ? "grabbing"
+    : spaceDown.current
+    ? "grab"
+    : "default";
+
   return (
     <div className="absolute inset-0">
-      {/* Background full screen */}
       <div className="absolute inset-0 bg-linear-to-br from-[#070B14] via-[#0B1220] to-[#05070D]" />
 
-      {/* Frame 90vw/90vh */}
       <div
         ref={frameRef}
-        className="absolute left-1/2 top-1/2 h-[90vh] w-[90vw] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[28px] border border-white/10 bg-white/5 shadow-[0_30px_90px_rgba(0,0,0,0.75)] backdrop-blur"
+        onWheel={onWheel}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
+        onPointerLeave={endPan}
+        onMouseEnter={() => (hovering.current = true)}
+        onMouseLeave={() => (hovering.current = false)}
+        style={{ cursor }}
+        className="absolute left-1/2 top-1/2 h-[90vh] w-[95vw] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[28px] border border-white/10 bg-white/5 shadow-[0_30px_90px_rgba(0,0,0,0.75)] backdrop-blur select-none touch-none"
       >
-        <div className="relative h-full w-full">
-          {/* Stage centered + auto-fit scale */}
-          <div
-            className="absolute left-1/2 top-1/2"
-            style={{
-              transform: `translate(-50%, -50%) scale(${fitScale})`,
-              transformOrigin: "center",
-            }}
+        {/* Zoom/Pan controls */}
+        <div
+          data-nopan="1"
+          className="absolute right-4 top-4 z-50 flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0B1020]/70 p-2 text-white shadow backdrop-blur"
+        >
+          <button
+            data-nopan="1"
+            onClick={zoomOut}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-extrabold hover:bg-white/10"
+            title="Zoom out (-)"
           >
-            <div
-              className="relative"
-              style={{
-                width,
-                height,
-                backgroundImage:
-                  "radial-gradient(circle at 1px 1px, rgba(212,175,55,0.08) 1px, transparent 0)",
-                backgroundSize: "22px 22px",
-              }}
-            >
-              {/* EDGES */}
-              <svg className="absolute inset-0" width={width} height={height}>
-                <AnimatePresence initial={false}>
-                  {edges.map((e) => {
-                    const a = map.get(e.from);
-                    const b = map.get(e.to);
-                    if (!a || !b) return null;
+            −
+          </button>
 
-                    const x1 = a.x;
-                    const y1 = a.y + NODE_H;
-                    const x2 = b.x;
-                    const y2 = b.y;
+          <button
+            data-nopan="1"
+            onClick={() => {
+              zoomReset();
+              panReset();
+            }}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-extrabold hover:bg-white/10"
+            title="Reset view (0)"
+          >
+            {Math.round(finalScale * 100)}%
+          </button>
 
-                    const c1y = y1 + 24;
-                    const c2y = y2 - 24;
-                    const d = `M ${x1} ${y1} C ${x1} ${c1y}, ${x2} ${c2y}, ${x2} ${y2}`;
+          <button
+            data-nopan="1"
+            onClick={zoomIn}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-extrabold hover:bg-white/10"
+            title="Zoom in (+)"
+          >
+            +
+          </button>
 
-                    const edgeKey = `${e.from}->${e.to}`;
-                    const isPathEdge = edgeFocus.has(edgeKey);
+          <button
+            data-nopan="1"
+            onClick={panReset}
+            className="hidden md:inline-flex rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-extrabold hover:bg-white/10"
+            title="Center"
+          >
+            Center
+          </button>
 
-                    // roles (Z/Y/X) should also pop
-                    const isRole = !!roles?.[e.from] || !!roles?.[e.to];
+          <div className="hidden lg:block pl-2 text-[11px] text-white/55">
+            Space+Drag | Ctrl/⌘+Wheel
+          </div>
+        </div>
 
-                    //   only path edges (search) OR roles (balance)
-                    const strong = isPathEdge || isRole;
+        <div className="relative h-full w-full">
+          {/* Center */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            {/* Scale wrapper */}
+            <div style={{ transform: `scale(${finalScale})`, transformOrigin: "center" }}>
+              {/* Pan wrapper (stage coords) */}
+              <div
+                style={{
+                  transform: `translate(${panInStage.x}px, ${panInStage.y}px)`,
+                  transformOrigin: "center",
+                }}
+              >
+                <div
+                  className="relative"
+                  style={{
+                    width,
+                    height,
+                    backgroundImage:
+                      "radial-gradient(circle at 1px 1px, rgba(212,175,55,0.08) 1px, transparent 0)",
+                    backgroundSize: "22px 22px",
+                  }}
+                >
+                  {/* EDGES */}
+                  <svg className="absolute inset-0" width={width} height={height}>
+                    <AnimatePresence initial={false}>
+                      {edges.map((e) => {
+                        const a = map.get(e.from);
+                        const b = map.get(e.to);
+                        if (!a || !b) return null;
 
-                    return (
-                      <motion.path
-                        key={edgeKey}
-                        d={d}
-                        fill="none"
-                        stroke={strong ? "rgba(212,175,55,0.98)" : "rgba(226,232,240,0.82)"}
-                        strokeWidth={strong ? 3.8 : 2.8}
-                        strokeLinecap="round"
-                        initial={{ opacity: 0, pathLength: 0.25 }}
-                        animate={{ opacity: 1, pathLength: 1 }}
-                        exit={{ opacity: 0, pathLength: 0 }}
-                        transition={{ duration: 0.28 }}
-                      />
-                    );
-                  })}
-                </AnimatePresence>
-              </svg>
+                        const x1 = a.x;
+                        const y1 = a.y + NODE_H;
+                        const x2 = b.x;
+                        const y2 = b.y;
 
-              {/* NODES */}
-              <AnimatePresence initial={false}>
-                {nodes.map((n) => {
-                  const highlight = focus.has(n.id);
-                  const role = roles?.[n.id];
+                        const c1y = y1 + 24;
+                        const c2y = y2 - 24;
+                        const d = `M ${x1} ${y1} C ${x1} ${c1y}, ${x2} ${c2y}, ${x2} ${y2}`;
 
-                  return (
-                    <motion.div
-                      key={n.id}
-                      layout
-                      transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.7 }}
-                      className="absolute"
-                      style={{
-                        left: n.x - NODE_W / 2,
-                        top: n.y,
-                        width: NODE_W,
-                        height: NODE_H,
-                      }}
-                    >
-                      <div
-                        className={[
-                          "h-full w-full rounded-2xl border px-3 py-2.5 shadow-[0_10px_35px_rgba(0,0,0,0.45)]",
-                          highlight
-                            ? "border-[#D4AF37] bg-[#0E162A] ring-4 ring-[#D4AF37]/25"
-                            : "border-white/10 bg-[#0C1426]",
-                          !highlight ? roleFrame(role) : "",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="text-sm font-extrabold tracking-wide text-white">
-                            {n.id}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {roleBadge(role)}
-                            <div className="text-[11px] text-white/70">
-                              h={n.height} • bf={n.b}
+                        const edgeKey = `${e.from}->${e.to}`;
+                        const isPathEdge = edgeFocus.has(edgeKey);
+                        const isRole = !!roles?.[e.from] || !!roles?.[e.to];
+                        const strong = isPathEdge || isRole;
+
+                        return (
+                          <motion.path
+                            key={edgeKey}
+                            d={d}
+                            fill="none"
+                            stroke={strong ? "rgba(212,175,55,0.98)" : "rgba(226,232,240,0.82)"}
+                            strokeWidth={strong ? 3.8 : 2.8}
+                            strokeLinecap="round"
+                            initial={{ opacity: 0, pathLength: 0.25 }}
+                            animate={{ opacity: 1, pathLength: 1 }}
+                            exit={{ opacity: 0, pathLength: 0 }}
+                            transition={{ duration: 0.28 }}
+                          />
+                        );
+                      })}
+                    </AnimatePresence>
+                  </svg>
+
+                  {/* NODES */}
+                  <AnimatePresence initial={false}>
+                    {nodes.map((n) => {
+                      const highlight = focus.has(n.id);
+                      const role = roles?.[n.id];
+
+                      return (
+                        <motion.div
+                          key={n.id}
+                          layout
+                          transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.7 }}
+                          className="absolute"
+                          style={{
+                            left: n.x - NODE_W / 2,
+                            top: n.y,
+                            width: NODE_W,
+                            height: NODE_H,
+                          }}
+                        >
+                          <div
+                            className={[
+                              "h-full w-full rounded-2xl border px-3 py-2.5 shadow-[0_10px_35px_rgba(0,0,0,0.45)]",
+                              highlight
+                                ? "border-[#D4AF37] bg-[#0E162A] ring-4 ring-[#D4AF37]/25"
+                                : "border-white/10 bg-[#0C1426]",
+                              !highlight ? roleFrame(role) : "",
+                            ].join(" ")}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-sm font-extrabold tracking-wide text-white">
+                                {n.id}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {roleBadge(role)}
+                                <div className="text-[11px] text-white/70">
+                                  h={n.height} • bf={n.b}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-0.5 truncate text-xs font-semibold text-white/90">
+                              {n.name}
+                            </div>
+
+                            <div className="text-xs text-white/80">
+                              GPA: <span className="font-bold text-[#D4AF37]">{n.gpa}</span>
                             </div>
                           </div>
-                        </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
 
-                        <div className="mt-0.5 truncate text-xs font-semibold text-white/90">
-                          {n.name}
+                  {/* GHOST NODE */}
+                  {ghost && ghostPos && (
+                    <motion.div
+                      className="absolute"
+                      initial={{ opacity: 0, scale: 0.96 }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                        left: ghostPos.x - (NODE_W * 1.04) / 2,
+                        top: ghostPos.y,
+                      }}
+                      transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                      style={{ width: NODE_W * 1.04 }}
+                    >
+                      <div className="rounded-2xl border border-[#D4AF37] bg-[#0B1020]/85 p-3 shadow-[0_18px_50px_rgba(0,0,0,0.6)] backdrop-blur">
+                        <div className="text-[10px] uppercase tracking-widest text-[#D4AF37]">
+                          New (not attached)
                         </div>
-
+                        <div className="mt-0.5 text-base font-extrabold text-white">{ghost.id}</div>
+                        <div className="truncate text-xs text-white/85">{ghost.name}</div>
                         <div className="text-xs text-white/80">
-                          GPA: <span className="font-bold text-[#D4AF37]">{n.gpa}</span>
+                          GPA: <span className="font-bold text-[#D4AF37]">{ghost.gpa}</span>
                         </div>
                       </div>
                     </motion.div>
-                  );
-                })}
-              </AnimatePresence>
+                  )}
 
-              {/* GHOST NODE */}
-              {ghost && ghostPos && (
-                <motion.div
-                  className="absolute"
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{
-                    opacity: 1,
-                    scale: 1,
-                    left: ghostPos.x - (NODE_W * 1.04) / 2,
-                    top: ghostPos.y,
-                  }}
-                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                  style={{ width: NODE_W * 1.04 }}
-                >
-                  <div className="rounded-2xl border border-[#D4AF37] bg-[#0B1020]/85 p-3 shadow-[0_18px_50px_rgba(0,0,0,0.6)] backdrop-blur">
-                    <div className="text-[10px] uppercase tracking-widest text-[#D4AF37]">
-                      New (not attached)
+                  {!root && (
+                    <div className="absolute inset-0 flex items-center justify-center text-white/70">
+                      Cây rỗng.
                     </div>
-                    <div className="mt-0.5 text-base font-extrabold text-white">{ghost.id}</div>
-                    <div className="truncate text-xs text-white/85">{ghost.name}</div>
-                    <div className="text-xs text-white/80">
-                      GPA: <span className="font-bold text-[#D4AF37]">{ghost.gpa}</span>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {!root && (
-                <div className="absolute inset-0 flex items-center justify-center text-white/70">
-                  Cây rỗng.
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
+          {/* end center */}
         </div>
       </div>
     </div>

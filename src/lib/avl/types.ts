@@ -74,4 +74,7 @@ export type TutorStep = {
   rotationHint?: string; 
 
   focusEdges?: string[];
+
+  batchIndex?: number;  // 0..n-1
+  batchValue?: number;
 };

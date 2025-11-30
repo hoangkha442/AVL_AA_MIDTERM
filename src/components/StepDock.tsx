@@ -265,20 +265,20 @@ export default function StepDock({
         <div className="flex items-center gap-2">
           <button
             onClick={onPrev}
-            className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/5"
+            className="rounded-2xl cursor-pointer border border-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/5"
           >
-            ◀ Prev
+            Prev
           </button>
           <button
             onClick={onNext}
-            className="rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-black hover:brightness-110"
+            className="rounded-2xl cursor-pointer bg-white px-4 py-3 text-sm font-extrabold text-black hover:brightness-110"
           >
-            Next ▶
+            Next
           </button>
 
           <button
             onClick={onExit}
-            className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/5"
+            className="rounded-2xl cursor-pointer border border-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/5"
           >
             Exit
           </button>

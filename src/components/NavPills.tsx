@@ -17,6 +17,7 @@ export default function NavPills() {
       <NavLink to="/balance" className={cls}>
         Balance (AVL)
       </NavLink>
+      <NavLink to="/auto-build" className={cls}>Auto Build</NavLink>
     </div>
   );
 }
